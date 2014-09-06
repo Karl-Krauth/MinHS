@@ -56,3 +56,36 @@ binApply e1 e2 e3 = App (App e1 e2) e3
 
 binTyApp :: Type -> Type -> Type -> Type
 binTyApp t1 t2 t3 = TypeApp (TypeApp t1 t2) t3
+
+isArith :: Op -> Bool
+isArith Add  = True
+isArith Sub  = True
+isArith Mul  = True
+isArith Quot = True
+isArith _    = False
+
+arithToFunc :: Op -> (Integer -> Integer ->Integer)
+arithToFunc Add  = (+)
+arithToFunc Sub  = (-)
+arithToFunc Mul  = (*)
+arithToFunc Quot = quot
+arithToFunc Rem  = mod
+arithToFunc _    = error "Invalid operator."
+
+isComp :: Op -> Bool
+isComp Gt = True
+isComp Ge = True
+isComp Lt = True
+isComp Le = True
+isComp Eq = True
+isComp Ne = True
+isComp _  = False
+
+compToFunc :: Op -> (Integer -> Integer -> Bool)
+compToFunc Gt = (>)
+compToFunc Ge = (>=)
+compToFunc Lt = (<)
+compToFunc Le = (<=)
+compToFunc Eq = (==)
+compToFunc Ne = (/=)
+compToFunc _  = error "Invalid operator."

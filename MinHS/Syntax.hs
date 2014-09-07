@@ -61,15 +61,12 @@ isArith :: Op -> Bool
 isArith Add  = True
 isArith Sub  = True
 isArith Mul  = True
-isArith Quot = True
 isArith _    = False
 
 arithToFunc :: Op -> (Integer -> Integer ->Integer)
 arithToFunc Add  = (+)
 arithToFunc Sub  = (-)
 arithToFunc Mul  = (*)
-arithToFunc Quot = quot
-arithToFunc Rem  = mod
 arithToFunc _    = error "Invalid operator."
 
 isComp :: Op -> Bool

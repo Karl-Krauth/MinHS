@@ -31,14 +31,14 @@ showVal Nil      = "Nil"
 showVal (Cons i v) = "Cons " ++ (show i) ++ " " ++ (showVal v)
 showVal BinL     = "BinL" 
 showVal (UnaL i)   = "UnaL " ++ show i 
-showVal (BinA f)   = "BinA" 
-showVal (UnaD f)   = "UnaD" 
-showVal (BinC f)     = "BinC" 
-showVal (UnaC f)     = "UnaC"
+showVal (BinA _)   = "BinA" 
+showVal (UnaD _)   = "UnaD" 
+showVal (BinC _)     = "BinC" 
+showVal (UnaC _)     = "UnaC"
 showVal Hea      = "Hea"
 showVal Tai      = "Tai"
 showVal Nul      = "Nul"
-showVal (Cl i is e g) = "Cl " ++ i ++ (show is) ++ (show e)
+showVal (Cl i is e _) = "Cl " ++ i ++ (show is) ++ (show e)
 
 instance PP.Pretty Value where
   pretty (I i) = numeric $ i
@@ -53,46 +53,45 @@ evaluate bs = evalE E.empty (Let bs (Var "main"))
 
 evalE :: VEnv -> Exp -> Value
 --evalE g e = error (show e) --Warning: for testing only
-evalE g (Var id) 
-  | isJust res                    = fromJust res
-  | otherwise                     = error ("Undefined variabe " ++ id)
-  where res                       = E.lookup g id
-evalE g (Prim op)
-  | isArith op                    = BinA (arithToFunc op)
-  | op == Neg                     = UnaA negate
-  | op == Quot                    = BinD quot
-  | op == Rem                     = BinD rem
-  | isComp op                     = BinC (compToFunc op)
-  | op == Head                    = Hea
-  | op == Tail                    = Tai
-  | op == Null                    = Nul
-evalE g (Con id)
-  | id == "True"                  = B True
-  | id == "False"                 = B False
-  | id == "Nil"                   = Nil
-  | id == "Cons"                  = BinL
-evalE _ (Num a)                   = I a
-evalE g (App e1 e2)               = evalA (evalE g e1) (evalE g e2)
-evalE g (If e1 e2 e3)  
-  | getBool c                     = evalE g e2
-  | otherwise                     = evalE g e3
-  where c                         = evalE g e1
-evalE g (Let [] e)                = evalE g e
-evalE g (Let (b:bs) e)            = evalE (evalB g b) (Let bs e)
---evalE g (Letfun (Bind f t [] e))  = evalE (E.add g (f, Cl f [] e g)) e
-evalE g (Letfun (Bind f t ids e)) = Cl f ids e g
-evalE g e                         = error (show e)
+evalE g (Var i) 
+  | isJust res                     = fromJust res
+  | otherwise                      = error ("Undefined variabe " ++ i)
+  where res                        = E.lookup g i
+evalE _ (Prim op)
+  | isArith op                     = BinA (arithToFunc op)
+  | op == Quot                     = BinD quot
+  | op == Rem                      = BinD rem
+  | op == Neg                      = UnaA negate
+  | isComp op                      = BinC (compToFunc op)
+  | op == Head                     = Hea
+  | op == Tail                     = Tai
+  | op == Null                     = Nul
+evalE _ (Con i)
+  | i == "True"                    = B True
+  | i == "False"                   = B False
+  | i == "Nil"                     = Nil
+  | i == "Cons"                    = BinL
+  | otherwise                      = error "Invalid Con"
+evalE _ (Num a)                    = I a
+evalE g (App e1 e2)                = evalA (evalE g e1) (evalE g e2)
+evalE g (If e1 e2 e3)   
+  | getBool c                      = evalE g e2
+  | otherwise                      = evalE g e3
+  where c                          = evalE g e1
+evalE g (Let [] e)                 = evalE g e
+evalE g (Let (b:bs) e)             = evalE (evalB g b) (Let bs e)
+evalE g (Letfun (Bind i _ [] e))   =  let g' = (E.add g (i,v)) 
+                                          v = evalE g' e 
+                                      in v
+evalE g (Letfun (Bind f _ ids e))  = Cl f ids e g
 
 
 evalB :: VEnv -> Bind -> VEnv
-evalB g (Bind i t [] e)  = E.add g (i, evalE g e)
-evalB g (Bind i t ids e) = E.add g (i, Cl "" ids e g)
+evalB g (Bind i _ [] e)  = E.add g (i, evalE g e)
+evalB g (Bind i _ ids e) = E.add g (i, Cl "" ids e g)
 
 
 evalA :: Value -> Value -> Value
-evalA c@(Cl f [i] e g) v      = evalE env e
-  where env = E.add (E.add g (i, v)) (f, c) 
-evalA (Cl f (i:is) e g) v     = Cl f is e (E.add g (i, v))
 evalA BinL (I i)              = UnaL i
 evalA (UnaL i) v              = Cons i v
 evalA (BinA f) (I i)          = UnaA (f i)
@@ -103,12 +102,15 @@ evalA (UnaD f) (I i)
   | otherwise                 = I (f i)
 evalA (BinC f) (I i)          = UnaC (f i)
 evalA (UnaC f) (I i)          = B (f i)
-evalA Hea (Cons i v)          = I i 
-evalA Tai (Cons i v)          = v
-evalA Nul (Cons i v)          = B False
+evalA Hea (Cons i _)          = I i 
+evalA Hea Nil                 = error "Applying head to empty-list."
+evalA Tai (Cons _ v)          = v
+evalA Tai Nil                 = error "Applying Tail to empty-list."
+evalA Nul (Cons _ _)          = B False
 evalA Nul Nil                 = B True
-evalA v c@(Cl f [] e g)       = evalA v (evalE (E.add g (f, c)) e)
-evalA v1 v2                   = error "Invalid function application."
+evalA c@(Cl f [i] e g) v      = evalE env e
+  where env = E.add (E.add g (i, v)) (f, c) 
+evalA (Cl f (i:is) e g) v     = Cl f is e (E.add g (i, v))
 
 
 getBool :: Value -> Bool

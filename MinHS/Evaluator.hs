@@ -1,8 +1,6 @@
 module MinHS.Evaluator where
 import qualified MinHS.Env as E
 import MinHS.Syntax
-import MinHS.Pretty
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import Data.Maybe
 
 type VEnv = E.Env Value
@@ -23,39 +21,16 @@ data Value = I Integer
            | Tai
            | Nul
            | Cl Id [Id] Exp VEnv
-
-showVal :: Value -> String
-showVal (I i)    = "I " ++ (show i)
-showVal (B b)      = "B " ++ (show b)
-showVal Nil      = "Nil" 
-showVal (Cons i v) = "Cons " ++ (show i) ++ " " ++ (showVal v)
-showVal BinL     = "BinL" 
-showVal (UnaL i)   = "UnaL " ++ show i 
-showVal (BinA _)   = "BinA" 
-showVal (UnaD _)   = "UnaD" 
-showVal (BinC _)     = "BinC" 
-showVal (UnaC _)     = "UnaC"
-showVal Hea      = "Hea"
-showVal Tai      = "Tai"
-showVal Nul      = "Nul"
-showVal (Cl i is e _) = "Cl " ++ i ++ (show is) ++ (show e)
-
-instance PP.Pretty Value where
-  pretty (I i) = numeric $ i
-  pretty (B b) = datacon $ show b
-  pretty (Nil) = datacon "Nil"
-  pretty (Cons x v) = PP.parens (datacon "Cons" PP.<+> numeric x PP.<+> PP.pretty v)
-  pretty _ = undefined -- should not ever be used
+           | RecV Bind VEnv
 
 evaluate :: Program -> Value
 evaluate bs = evalE E.empty (Let bs (Var "main"))
 
 
 evalE :: VEnv -> Exp -> Value
---evalE g e = error (show e) --Warning: for testing only
 evalE g (Var i) 
-  | isJust res                     = fromJust res
-  | otherwise                      = error ("Undefined variabe " ++ i)
+  | isJust res                     = evalVar (fromJust res)
+  | otherwise                      = error ("Undefined variable " ++ i)
   where res                        = E.lookup g i
 evalE _ (Prim op)
   | isArith op                     = BinA (arithToFunc op)
@@ -83,7 +58,10 @@ evalE g (Let (b:bs) e)             = evalE (evalB g b) (Let bs e)
 evalE g (Letfun (Bind i _ [] e))   =  let g' = (E.add g (i,v)) 
                                           v = evalE g' e 
                                       in v
-evalE g (Letfun (Bind f _ ids e))  = Cl f ids e g
+evalE g (Letfun (Bind f _ ids e))  = Cl f ids e env
+  where env = E.add g (f, Cl f ids e env)
+evalE g (Letrec [] e)              = evalE g e
+evalE g (Letrec bs e)              = evalE (evalR g bs) e
 
 
 evalB :: VEnv -> Bind -> VEnv
@@ -91,7 +69,18 @@ evalB g (Bind i _ [] e)  = E.add g (i, evalE g e)
 evalB g (Bind i _ ids e) = E.add g (i, Cl "" ids e g)
 
 
-evalA :: Value -> Value -> Value
+evalR :: VEnv -> [Bind] -> VEnv
+evalR g []                    = g
+evalR g (b@(Bind i _ _ _):bs) = evalR (E.add g (i, RecV b (evalR g (b:bs)))) bs
+
+
+evalVar :: Value -> Value
+evalVar (RecV (Bind _ _ [] e) g)  = evalE g e
+evalVar (RecV b g)                = evalE g (Letfun b)
+evalVar v                         = v
+
+
+evalA :: Value -> Value -> Value 
 evalA BinL (I i)              = UnaL i
 evalA (UnaL i) v              = Cons i v
 evalA (BinA f) (I i)          = UnaA (f i)
@@ -108,8 +97,7 @@ evalA Tai (Cons _ v)          = v
 evalA Tai Nil                 = error "Applying Tail to empty-list."
 evalA Nul (Cons _ _)          = B False
 evalA Nul Nil                 = B True
-evalA c@(Cl f [i] e g) v      = evalE env e
-  where env = E.add (E.add g (i, v)) (f, c) 
+evalA (Cl _ [i] e g) v        = evalE (E.add g (i, v)) e
 evalA (Cl f (i:is) e g) v     = Cl f is e (E.add g (i, v))
 
 
